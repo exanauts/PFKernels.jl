@@ -1,3 +1,4 @@
+__precompile__(false)
 module PFkernel
     using SparseArrays
     using Printf
@@ -12,7 +13,7 @@ module PFkernel
     include("PowerSystem/PowerSystem.jl")
     using .PowerSystem
 
-    using CUDA
+    using AMDGPU
 
     const PS = PowerSystem
     
@@ -85,8 +86,8 @@ module PFkernel
                 # f_im = a * sin - b * cos
                 coef_cos = v_m[fr]*v_m[to]*ybus_re_nzval[c]
                 coef_sin = v_m[fr]*v_m[to]*ybus_im_nzval[c]
-                cos_val = CUDA.cos(aij)
-                sin_val = CUDA.sin(aij)
+                cos_val = AMDGPU.cos(aij)
+                sin_val = AMDGPU.sin(aij)
                 F[i] += coef_cos * cos_val + coef_sin * sin_val
                 if i > npv
                     F[npq + i] += coef_cos * sin_val - coef_sin * cos_val
@@ -100,9 +101,23 @@ module PFkernel
                                     pinj, qinj, pv, pq, nbus)
         npv = length(pv)
         npq = length(pq)
-        @cuda residual_kernel_cuda!(F, v_m, v_a,
-                    ybus_re.nzval, ybus_re.colptr, ybus_re.rowval,
-                    ybus_im.nzval, ybus_im.colptr, ybus_im.rowval,
-                    pinj, qinj, pv, pq, nbus)
+        dF = HSAArray(F)
+        dv_m = HSAArray(v_m)
+        dv_a = HSAArray(v_a)
+        dybus_re_nzval = HSAArray(ybus_re.nzval)
+        dybus_re_colptr = HSAArray(ybus_re.colptr)
+        dybus_re_rowval = HSAArray(ybus_re.rowval)
+        dybus_im_nzval = HSAArray(ybus_im.nzval)
+        dybus_im_colptr = HSAArray(ybus_im.colptr)
+        dybus_im_rowval = HSAArray(ybus_im.rowval)
+        dpinj = HSAArray(pinj)
+        dqinj = HSAArray(qinj)
+        dpv = HSAArray(pv)
+        dpq = HSAArray(pq)
+        wait(@roc residual_kernel_cuda!(dF, dv_m, dv_a,
+                    dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+                    dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+                    dpinj, dqinj, dpv, dpq, nbus))
+        F .= dF
     end
 end

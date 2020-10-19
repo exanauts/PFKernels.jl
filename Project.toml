@@ -4,6 +4,6 @@ authors = ["Michel Schanen <Michel.Schanen@gmail.com>"]
 version = "0.1.0"
 
 [deps]
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
