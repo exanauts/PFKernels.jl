@@ -14,6 +14,9 @@ module PFkernel
     using .PowerSystem
 
     const PS = PowerSystem
+
+    using ForwardDiff
+    using AMDGPU
     
     function residualFunction(V, Ybus, Sbus, pv, pq)
         # form mismatch vector
@@ -167,7 +170,8 @@ module PFkernel
         npv = length(pv)
         npq = length(pq)
         if gpu == "amd" 
-            T = HSAArray
+            T = ROCVector{ForwardDiff.Dual{Nothing,Float32, 1}}
+            T = ROCVector
         end
         # if gpu == "nvidia" 
         #     T = CuArray
@@ -175,6 +179,7 @@ module PFkernel
         # if gpu == "intel" 
         #     T = oneArray
         # end
+         
         dF = T(F)
         dv_m = T(v_m)
         dv_a = T(v_a)
