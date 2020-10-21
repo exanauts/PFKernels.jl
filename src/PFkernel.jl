@@ -16,7 +16,7 @@ module PFkernel
     const PS = PowerSystem
 
     using ForwardDiff
-    using AMDGPU
+    using oneAPI
     
     function residualFunction(V, Ybus, Sbus, pv, pq)
         # form mismatch vector
@@ -95,6 +95,7 @@ module PFkernel
                 end
             end
         end
+        return nothing
     end
 
     function residual_kernel_oneapi!(F, v_m, v_a,
@@ -127,6 +128,7 @@ module PFkernel
                 F[npq + i] += coef_cos * sin_val - coef_sin * cos_val
             end
         end
+        return nothing
     end
 
     function residual_kernel_cuda!(F, v_m, v_a,
@@ -162,6 +164,7 @@ module PFkernel
                 end
             end
         end
+        return nothing
     end
 
     function residualFunction_polar!(F, v_m, v_a,
@@ -170,15 +173,16 @@ module PFkernel
         npv = length(pv)
         npq = length(pq)
         if gpu == "amd" 
-            T = ROCVector{ForwardDiff.Dual{Nothing,Float32, 1}}
+            #T = ROCVector{ForwardDiff.Dual{Nothing,Float64, 1}}
             T = ROCVector
         end
-        # if gpu == "nvidia" 
-        #     T = CuArray
-        # end
-        # if gpu == "intel" 
-        #     T = oneArray
-        # end
+        if gpu == "nvidia" 
+            T = CuArray
+        end
+        if gpu == "intel" 
+             T = oneArray
+             #T = oneArray{ForwardDiff.Dual{Nothing,Float64, 1}}
+        end
          
         dF = T(F)
         dv_m = T(v_m)
@@ -194,24 +198,25 @@ module PFkernel
         dpv = T(pv)
         dpq = T(pq)
 
-        if gpu == "amd" 
-            wait(@roc residual_kernel_roc!(dF, dv_m, dv_a,
-                        dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-                        dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-                        dpinj, dqinj, dpv, dpq, nbus))
-        end
+        #if gpu == "amd" 
+            #wait(@roc residual_kernel_roc!(dF, dv_m, dv_a,
+                        #dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+                        #dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+                        #dpinj, dqinj, dpv, dpq, nbus))
+        #end
         # if gpu == "nvidia" 
         #     wait(@cuda residual_kernel_cuda!(dF, dv_m, dv_a,
         #                 dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
         #                 dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
         #                 dpinj, dqinj, dpv, dpq, nbus))
         # end
-        # if gpu == "intel" 
-        #     @oneapi residual_kernel_cuda!(dF, dv_m, dv_a,
-        #                 dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-        #                 dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-        #                 dpinj, dqinj, dpv, dpq, nbus)
-        # end
+        if gpu == "intel" 
+             n = length(pv) + length(pq)
+             @oneapi items=n residual_kernel_oneapi!(dF, dv_m, dv_a,
+                         dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+                         dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+                         dpinj, dqinj, dpv, dpq, nbus)
+        end
         F .= dF
     end
 end
