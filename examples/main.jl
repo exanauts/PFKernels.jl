@@ -41,7 +41,7 @@ F = zeros(Float64, npv + 2*npq)
 F♯ = residualFunction(V, Ybus, Sbus, pv, pq)
 residualFunction_polar!(F, Vm, Va,
     ybus_re, ybus_im,
-    pbus, qbus, pv, pq, nbus, "nvidia")
+    pbus, qbus, pv, pq, nbus, "intel")
 @show F
 @show F♯
 @assert(F ≈ F♯)

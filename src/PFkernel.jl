@@ -16,7 +16,7 @@ module PFkernel
     const PS = PowerSystem
 
     using ForwardDiff
-    using CUDA
+    using oneAPI
     
     function residualFunction(V, Ybus, Sbus, pv, pq)
         # form mismatch vector
@@ -182,8 +182,7 @@ module PFkernel
             T = CuVector
         end
         if gpu == "intel" 
-             T = oneArray
-             #T = oneArray{ForwardDiff.Dual{Nothing,Float64, 1}}
+            T = oneArray
         end
         @show typeof(pv)
         @show typeof(pq)
@@ -231,21 +230,21 @@ module PFkernel
                         #dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
                         #dpinj, dqinj, dpv, dpq, nbus))
         #end
-        if gpu == "nvidia" 
-            CUDA.@sync begin
-                @cuda residual_kernel_cuda!(dF, dv_m, dv_a,
-                            dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-                            dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-                            dpinj, dqinj, dpv, dpq, nbus)
-            end
-        end
-        # if gpu == "intel" 
-        #      n = length(pv) + length(pq)
-        #      @oneapi items=n residual_kernel_oneapi!(dF, dv_m, dv_a,
-        #                  dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-        #                  dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-        #                  dpinj, dqinj, dpv, dpq, nbus)
-        # end
+        #if gpu == "nvidia" 
+            #CUDA.@sync begin
+                #@cuda residual_kernel_cuda!(dF, dv_m, dv_a,
+                            #dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+                            #dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+                            #dpinj, dqinj, dpv, dpq, nbus)
+            #end
+        #end
+         if gpu == "intel" 
+              n = length(pv) + length(pq)
+              @oneapi items=n residual_kernel_oneapi!(dF, dv_m, dv_a,
+                          dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+                          dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+                          dpinj, dqinj, dpv, dpq, nbus)
+         end
         F .= ForwardDiff.value.(dF)
     end
 end
