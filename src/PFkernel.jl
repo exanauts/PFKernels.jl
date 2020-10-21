@@ -16,7 +16,7 @@ module PFkernel
     const PS = PowerSystem
 
     using ForwardDiff
-    using oneAPI
+    using CUDA
     
     function residualFunction(V, Ybus, Sbus, pv, pq)
         # form mismatch vector
@@ -172,29 +172,56 @@ module PFkernel
                                     pinj, qinj, pv, pq, nbus, gpu)
         npv = length(pv)
         npq = length(pq)
+        t1s{N} = ForwardDiff.Dual{Nothing,Float64, N} where N
+        V = Vector
         if gpu == "amd" 
             #T = ROCVector{ForwardDiff.Dual{Nothing,Float64, 1}}
             T = ROCVector
         end
         if gpu == "nvidia" 
-            T = CuArray
+            T = CuVector
         end
         if gpu == "intel" 
              T = oneArray
              #T = oneArray{ForwardDiff.Dual{Nothing,Float64, 1}}
         end
-         
-        dF = T(F)
-        dv_m = T(v_m)
-        dv_a = T(v_a)
-        dybus_re_nzval = T(ybus_re.nzval)
+        @show typeof(pv)
+        @show typeof(pq)
+        adF = V{t1s{2}}(undef, length(F))
+        adv_m = V{t1s{2}}(undef, length(v_m))
+        adv_a = V{t1s{2}}(undef, length(v_a))
+        adybus_re_nzval = V{t1s{2}}(undef, length(ybus_re.nzval))
+        adybus_re_colptr = V{Int64}(undef, length(ybus_re.colptr))
+        adybus_re_rowval = V{Int64}(undef, length(ybus_re.rowval))
+        adybus_im_nzval = V{t1s{2}}(undef, length(ybus_im.nzval))
+        adybus_im_colptr = V{Int64}(undef, length(ybus_im.colptr))
+        adybus_im_rowval = V{Int64}(undef, length(ybus_im.rowval))
+        adpinj = V{t1s{2}}(undef, length(pinj))
+        adqinj = V{t1s{2}}(undef, length(qinj))
+        adpv = V{t1s{2}}(undef, length(pv))
+        adpq = V{t1s{2}}(undef, length(pq))
+
+        adF .= F
+        adv_m .= v_m
+        adv_a .= v_a
+        adybus_re_nzval .= ybus_re.nzval
+        adybus_im_nzval .= ybus_im.nzval
+        adpinj .= pinj
+        adqinj .= qinj
+        adpv .= pv
+        adpq .= pq
+
+        dF = T(adF)
+        dv_m = T(adv_m)
+        dv_a = T(adv_a)
+        dybus_re_nzval = T(adybus_re_nzval)
         dybus_re_colptr = T(ybus_re.colptr)
         dybus_re_rowval = T(ybus_re.rowval)
-        dybus_im_nzval = T(ybus_im.nzval)
+        dybus_im_nzval = T(adybus_im_nzval)
         dybus_im_colptr = T(ybus_im.colptr)
         dybus_im_rowval = T(ybus_im.rowval)
-        dpinj = T(pinj)
-        dqinj = T(qinj)
+        dpinj = T(adpinj)
+        dqinj = T(adqinj)
         dpv = T(pv)
         dpq = T(pq)
 
@@ -204,19 +231,21 @@ module PFkernel
                         #dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
                         #dpinj, dqinj, dpv, dpq, nbus))
         #end
-        # if gpu == "nvidia" 
-        #     wait(@cuda residual_kernel_cuda!(dF, dv_m, dv_a,
-        #                 dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-        #                 dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-        #                 dpinj, dqinj, dpv, dpq, nbus))
-        # end
-        if gpu == "intel" 
-             n = length(pv) + length(pq)
-             @oneapi items=n residual_kernel_oneapi!(dF, dv_m, dv_a,
-                         dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-                         dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-                         dpinj, dqinj, dpv, dpq, nbus)
+        if gpu == "nvidia" 
+            CUDA.@sync begin
+                @cuda residual_kernel_cuda!(dF, dv_m, dv_a,
+                            dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+                            dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+                            dpinj, dqinj, dpv, dpq, nbus)
+            end
         end
-        F .= dF
+        # if gpu == "intel" 
+        #      n = length(pv) + length(pq)
+        #      @oneapi items=n residual_kernel_oneapi!(dF, dv_m, dv_a,
+        #                  dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+        #                  dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+        #                  dpinj, dqinj, dpv, dpq, nbus)
+        # end
+        F .= ForwardDiff.value.(dF)
     end
 end
