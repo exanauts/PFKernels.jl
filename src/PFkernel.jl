@@ -16,6 +16,7 @@ module PFkernel
     const PS = PowerSystem
 
     using ForwardDiff
+    using GPUArrays
     using AMDGPU
     
     function residualFunction(V, Ybus, Sbus, pv, pq)
@@ -87,8 +88,8 @@ module PFkernel
                 # f_im = a * sin - b * cos
                 coef_cos = v_m[fr]*v_m[to]*ybus_re_nzval[c]
                 coef_sin = v_m[fr]*v_m[to]*ybus_im_nzval[c]
-                cos_val = AMDGPU.cos(aij)
-                sin_val = AMDGPU.sin(aij)
+                cos_val = AMDGPU.GPUArrays.cos(aij)
+                sin_val = AMDGPU.GPUArrays.sin(aij)
                 F[i] += coef_cos * cos_val + coef_sin * sin_val
                 if i > npv
                     F[npq + i] += coef_cos * sin_val - coef_sin * cos_val
@@ -173,9 +174,9 @@ module PFkernel
         npv = length(pv)
         npq = length(pq)
         t1s{N} = ForwardDiff.Dual{Nothing,Float64, N} where N
+        FT = t1s{2}
         V = Vector
         if gpu == "amd" 
-            #T = ROCVector{ForwardDiff.Dual{Nothing,Float64, 1}}
             T = ROCVector
         end
         if gpu == "nvidia" 
@@ -184,19 +185,19 @@ module PFkernel
         if gpu == "intel" 
             T = oneArray
         end
-        adF = V{t1s{2}}(undef, length(F))
-        adv_m = V{t1s{2}}(undef, length(v_m))
-        adv_a = V{t1s{2}}(undef, length(v_a))
-        adybus_re_nzval = V{t1s{2}}(undef, length(ybus_re.nzval))
+        adF = V{FT}(undef, length(F))
+        adv_m = V{FT}(undef, length(v_m))
+        adv_a = V{FT}(undef, length(v_a))
+        adybus_re_nzval = V{FT}(undef, length(ybus_re.nzval))
         adybus_re_colptr = V{Int64}(undef, length(ybus_re.colptr))
         adybus_re_rowval = V{Int64}(undef, length(ybus_re.rowval))
-        adybus_im_nzval = V{t1s{2}}(undef, length(ybus_im.nzval))
+        adybus_im_nzval = V{FT}(undef, length(ybus_im.nzval))
         adybus_im_colptr = V{Int64}(undef, length(ybus_im.colptr))
         adybus_im_rowval = V{Int64}(undef, length(ybus_im.rowval))
-        adpinj = V{t1s{2}}(undef, length(pinj))
-        adqinj = V{t1s{2}}(undef, length(qinj))
-        adpv = V{t1s{2}}(undef, length(pv))
-        adpq = V{t1s{2}}(undef, length(pq))
+        adpinj = V{FT}(undef, length(pinj))
+        adqinj = V{FT}(undef, length(qinj))
+        adpv = V{FT}(undef, length(pv))
+        adpq = V{FT}(undef, length(pq))
 
         adF .= F
         adv_m .= v_m
