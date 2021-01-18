@@ -1,6 +1,5 @@
-push!(Base.LOAD_PATH, "./cuda")
 using GPUArrays
-using CUDA
+using AMDGPU
 import PFkernel: ParsePSSE, PowerSystem, IndexSet, Spmat, residual, residual!, CUDABackend, AMDGPUBackend, oneAPIBackend
 
 const PS = PowerSystem
