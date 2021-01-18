@@ -16,13 +16,52 @@ module PFkernel
     const PS = PowerSystem
 
     using ForwardDiff
-    using GPUArrays
-    using AMDGPU
     abstract type AbstractBackend end
     struct CPUBackend <: AbstractBackend end
     struct CUDABackend <: AbstractBackend end
     struct AMDGPUBackend <: AbstractBackend end
     struct oneAPIBackend <: AbstractBackend end
+    backend = nothing
+    try
+        using CUDA
+        @info("CUDA loaded")
+        global backend = CUDABackend()
+    catch
+        try
+            using AMDGPU
+            @info("AMDGPU loaded")
+            global backend = AMDGPUBackend()
+        catch
+            try
+                using oneAPI
+                @info("oneAPI loaded")
+                global backend = oneAPIBackend()
+            catch
+                @info("No GPU backend could be loaded, switching to CPU")
+                global backend = CPUBackend()
+            end
+        end
+    end
+
+    # Defining dummy macros for the code to run
+    if !(@isdefined CUDA)
+        macro cuda(ex)
+            return :( error("CUDA module not loaded") )
+        end
+    end
+
+    if !(@isdefined AMDGPU)
+        macro roc(ex)
+            return :( error("AMDGPU module not loaded") )
+        end
+    end
+
+    if !(@isdefined oneAPI)
+        macro oneapi(ex...)
+            return :( error("oneAPI module not loaded") )
+        end
+    end
+
 
     
     function residual(V, Ybus, Sbus, pv, pq)
@@ -193,21 +232,21 @@ module PFkernel
         end
         return nothing
     end
-    function residual_kernel_cuda!(F, v_m, v_a,
+    function residual_kernel!(F, v_m, v_a,
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                                   ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                                   pinj, qinj, pv, pq, nbus, ::CUDABackend)
-        CUDA.@sync begin
-            @cuda residual_kernel_cuda!(dF, dv_m, dv_a,
+        @sync begin
+            @cuda residual_kernel_cuda!(F, v_m, v_a,
                         ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                         ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                        pinj, dqinj, pv, pq, nbus)
+                        pinj, qinj, pv, pq, nbus)
         end
     end
 
     function residual!(F, v_m, v_a,
                                     ybus_re, ybus_im,
-                                    pinj, qinj, pv, pq, nbus, backend::AbstractBackend)
+                                    pinj, qinj, pv, pq, nbus)
         npv = length(pv)
         npq = length(pq)
         t1s{N} = ForwardDiff.Dual{Nothing,Float64, N} where N

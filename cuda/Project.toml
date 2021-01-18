@@ -1,0 +1,12 @@
+name = "PFkernel"
+uuid = "2a5d087c-8d02-47f0-9a65-30702840e7aa"
+authors = ["Michel Schanen <Michel.Schanen@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Requires = "ae029012-a4dd-5104-9daa-d747884805df"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"

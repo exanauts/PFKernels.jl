@@ -1,5 +1,7 @@
-using PFkernel
-import PFkernel: ParsePSSE, PowerSystem, IndexSet, Spmat, residualFunction, residual_polar!
+push!(Base.LOAD_PATH, "./cuda")
+using GPUArrays
+using CUDA
+import PFkernel: ParsePSSE, PowerSystem, IndexSet, Spmat, residual, residual!, CUDABackend, AMDGPUBackend, oneAPIBackend
 
 const PS = PowerSystem
 
@@ -41,7 +43,7 @@ F = zeros(Float64, npv + 2*npq)
 F♯ = residual(V, Ybus, Sbus, pv, pq)
 residual!(F, Vm, Va,
     ybus_re, ybus_im,
-    pbus, qbus, pv, pq, nbus, PFkernel.AMDGPUBackend())
+    pbus, qbus, pv, pq, nbus)
 @show F
 @show F♯
 @assert(F ≈ F♯)
