@@ -1,5 +1,5 @@
 using PFkernel
-import PFkernel: ParsePSSE, PowerSystem, IndexSet, Spmat, residualFunction, residualFunction_polar!
+import PFkernel: ParsePSSE, PowerSystem, IndexSet, Spmat, residualFunction, residual_polar!
 
 const PS = PowerSystem
 
@@ -38,10 +38,10 @@ ref, pv, pq = PS.bustypeindex(bus, gen, bus_to_indexes)
 npv = size(pv, 1)
 npq = size(pq, 1)
 F = zeros(Float64, npv + 2*npq)
-F♯ = residualFunction(V, Ybus, Sbus, pv, pq)
-residualFunction_polar!(F, Vm, Va,
+F♯ = residual(V, Ybus, Sbus, pv, pq)
+residual!(F, Vm, Va,
     ybus_re, ybus_im,
-    pbus, qbus, pv, pq, nbus, "amd")
+    pbus, qbus, pv, pq, nbus, PFkernel.AMDGPUBackend())
 @show F
 @show F♯
 @assert(F ≈ F♯)
