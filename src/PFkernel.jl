@@ -16,9 +16,55 @@ module PFkernel
     const PS = PowerSystem
 
     using ForwardDiff
-    using oneAPI
+    abstract type AbstractBackend end
+    struct CPUBackend <: AbstractBackend end
+    struct CUDABackend <: AbstractBackend end
+    struct AMDGPUBackend <: AbstractBackend end
+    struct oneAPIBackend <: AbstractBackend end
+    backend = nothing
+    try
+        using CUDA
+        @info("CUDA loaded")
+        global backend = CUDABackend()
+    catch
+        try
+            using AMDGPU
+            @info("AMDGPU loaded")
+            global backend = AMDGPUBackend()
+        catch
+            try
+                using oneAPI
+                @info("oneAPI loaded")
+                global backend = oneAPIBackend()
+            catch
+                @info("No GPU backend could be loaded, switching to CPU")
+                global backend = CPUBackend()
+            end
+        end
+    end
+
+    # Defining dummy macros for the code to run
+    if !(@isdefined CUDA)
+        macro cuda(ex)
+            return :( error("CUDA module not loaded") )
+        end
+    end
+
+    if !(@isdefined AMDGPU)
+        macro roc(ex)
+            return :( error("AMDGPU module not loaded") )
+        end
+    end
+
+    if !(@isdefined oneAPI)
+        macro oneapi(ex...)
+            return :( error("oneAPI module not loaded") )
+        end
+    end
+
+
     
-    function residualFunction(V, Ybus, Sbus, pv, pq)
+    function residual(V, Ybus, Sbus, pv, pq)
         # form mismatch vector
         mis = V .* conj(Ybus * V) - Sbus
         # form residual vector
@@ -31,7 +77,7 @@ module PFkernel
     function residual_kernel!(F, v_m, v_a,
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                                   ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                                  pinj, qinj, pv, pq, nbus)
+                                  pinj, qinj, pv, pq, nbus, ::CPUBackend)
         npv = length(pv)
         npq = length(pq)
         n = npq + npv
@@ -87,8 +133,8 @@ module PFkernel
                 # f_im = a * sin - b * cos
                 coef_cos = v_m[fr]*v_m[to]*ybus_re_nzval[c]
                 coef_sin = v_m[fr]*v_m[to]*ybus_im_nzval[c]
-                cos_val = AMDGPU.cos(aij)
-                sin_val = AMDGPU.sin(aij)
+                cos_val = AMDGPU.GPUArrays.cos(aij)
+                sin_val = AMDGPU.GPUArrays.sin(aij)
                 F[i] += coef_cos * cos_val + coef_sin * sin_val
                 if i > npv
                     F[npq + i] += coef_cos * sin_val - coef_sin * cos_val
@@ -97,6 +143,16 @@ module PFkernel
         end
         return nothing
     end
+    function residual_kernel!(F, v_m, v_a,
+                                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                                  pinj, qinj, pv, pq, nbus, ::AMDGPUBackend)
+        return wait(@roc residual_kernel_roc!(F, v_m, v_a,
+                    ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                    ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                    pinj, qinj, pv, pq, nbus))
+    end
+
 
     function residual_kernel_oneapi!(F, v_m, v_a,
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
@@ -129,6 +185,16 @@ module PFkernel
             end
         end
         return nothing
+    end
+    function residual_kernel!(F, v_m, v_a,
+                                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                                  pinj, qinj, pv, pq, nbus, ::oneAPIBackend)
+        n = length(pv) + length(pq)
+        @oneapi items=n residual_kernel_oneapi!(F, v_m, v_a,
+                    ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                    ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                    pinj, qinj, pv, pq, nbus)
     end
 
     function residual_kernel_cuda!(F, v_m, v_a,
@@ -166,39 +232,48 @@ module PFkernel
         end
         return nothing
     end
+    function residual_kernel!(F, v_m, v_a,
+                                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                                  pinj, qinj, pv, pq, nbus, ::CUDABackend)
+        @sync begin
+            @cuda residual_kernel_cuda!(F, v_m, v_a,
+                        ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                        ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                        pinj, qinj, pv, pq, nbus)
+        end
+    end
 
-    function residualFunction_polar!(F, v_m, v_a,
+    function residual!(F, v_m, v_a,
                                     ybus_re, ybus_im,
-                                    pinj, qinj, pv, pq, nbus, gpu)
+                                    pinj, qinj, pv, pq, nbus)
         npv = length(pv)
         npq = length(pq)
         t1s{N} = ForwardDiff.Dual{Nothing,Float64, N} where N
+        FT = t1s{2}
         V = Vector
-        if gpu == "amd" 
-            #T = ROCVector{ForwardDiff.Dual{Nothing,Float64, 1}}
+        if backend == AMDGPUBackend() 
             T = ROCVector
-        end
-        if gpu == "nvidia" 
+        elseif backend == CUDABackend()
             T = CuVector
-        end
-        if gpu == "intel" 
+        elseif backend == oneAPIBackend() 
             T = oneArray
+        else
+            error("Unsupported backend")
         end
-        @show typeof(pv)
-        @show typeof(pq)
-        adF = V{t1s{2}}(undef, length(F))
-        adv_m = V{t1s{2}}(undef, length(v_m))
-        adv_a = V{t1s{2}}(undef, length(v_a))
-        adybus_re_nzval = V{t1s{2}}(undef, length(ybus_re.nzval))
+        adF = V{FT}(undef, length(F))
+        adv_m = V{FT}(undef, length(v_m))
+        adv_a = V{FT}(undef, length(v_a))
+        adybus_re_nzval = V{FT}(undef, length(ybus_re.nzval))
         adybus_re_colptr = V{Int64}(undef, length(ybus_re.colptr))
         adybus_re_rowval = V{Int64}(undef, length(ybus_re.rowval))
-        adybus_im_nzval = V{t1s{2}}(undef, length(ybus_im.nzval))
+        adybus_im_nzval = V{FT}(undef, length(ybus_im.nzval))
         adybus_im_colptr = V{Int64}(undef, length(ybus_im.colptr))
         adybus_im_rowval = V{Int64}(undef, length(ybus_im.rowval))
-        adpinj = V{t1s{2}}(undef, length(pinj))
-        adqinj = V{t1s{2}}(undef, length(qinj))
-        adpv = V{t1s{2}}(undef, length(pv))
-        adpq = V{t1s{2}}(undef, length(pq))
+        adpinj = V{FT}(undef, length(pinj))
+        adqinj = V{FT}(undef, length(qinj))
+        adpv = V{FT}(undef, length(pv))
+        adpq = V{FT}(undef, length(pq))
 
         adF .= F
         adv_m .= v_m
@@ -224,27 +299,10 @@ module PFkernel
         dpv = T(pv)
         dpq = T(pq)
 
-        #if gpu == "amd" 
-            #wait(@roc residual_kernel_roc!(dF, dv_m, dv_a,
-                        #dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-                        #dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-                        #dpinj, dqinj, dpv, dpq, nbus))
-        #end
-        #if gpu == "nvidia" 
-            #CUDA.@sync begin
-                #@cuda residual_kernel_cuda!(dF, dv_m, dv_a,
-                            #dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-                            #dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-                            #dpinj, dqinj, dpv, dpq, nbus)
-            #end
-        #end
-         if gpu == "intel" 
-              n = length(pv) + length(pq)
-              @oneapi items=n residual_kernel_oneapi!(dF, dv_m, dv_a,
-                          dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
-                          dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-                          dpinj, dqinj, dpv, dpq, nbus)
-         end
+        residual_kernel!(dF, dv_m, dv_a,
+                        dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
+                        dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
+                        dpinj, dqinj, dpv, dpq, nbus, backend)
         F .= ForwardDiff.value.(dF)
     end
 end
