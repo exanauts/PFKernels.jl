@@ -177,8 +177,11 @@ module PFkernel
             # f_im = a * sin - b * cos
             coef_cos = v_m[fr]*v_m[to]*ybus_re_nzval[c]
             coef_sin = v_m[fr]*v_m[to]*ybus_im_nzval[c]
-            cos_val = oneAPI.cos(aij)
-            sin_val = oneAPI.sin(aij)
+            # TODO: support cos and sin in oneAPI
+            #cos_val = oneAPI.GPUArrays.cos(aij)
+            #sin_val = oneAPI.GPUArrays.sin(aij)
+            cos_val = aij
+            sin_val = aij 
             F[i] += coef_cos * cos_val + coef_sin * sin_val
             if i > npv
                 F[npq + i] += coef_cos * sin_val - coef_sin * cos_val
