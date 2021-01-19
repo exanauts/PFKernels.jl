@@ -1,0 +1,10 @@
+name = "PFkernel"
+uuid = "2a5d087c-8d02-47f0-9a65-30702840e7aa"
+authors = ["Michel Schanen <Michel.Schanen@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
