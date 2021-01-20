@@ -12,4 +12,4 @@ Due to dependency conflicts each target architecture has a `Project.toml` in the
 julia --project examples/main.jl
 ```
 
-All architecture targets use the same code in the `src` folder.
+By default, the code tries to load one of the GPU packages `AMDGPU.jl`, `oneAPI.jl` or `CUDA.jl`.

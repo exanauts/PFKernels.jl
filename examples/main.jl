@@ -1,7 +1,4 @@
 using GPUArrays
-#using AMDGPU
-#using CUDA
-using oneAPI
 import PFkernel: ParsePSSE, PowerSystem, IndexSet, Spmat, residual, residual!, CUDABackend, AMDGPUBackend, oneAPIBackend
 
 const PS = PowerSystem
