@@ -147,10 +147,31 @@ module PFkernel
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                                   ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                                   pinj, qinj, pv, pq, nbus, ::AMDGPUBackend)
-        return wait(@roc residual_kernel_roc!(F, v_m, v_a,
-                    ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                    ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                    pinj, qinj, pv, pq, nbus))
+        F_ = copy(F)
+        io = open("code_lowered.txt", "w")
+        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, v_m, v_a,
+                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                  pinj, qinj, pv, pq, nbus))
+        close(io)
+        F_ = copy(F)
+        io = open("code_typed.txt", "w")
+        print(io, @device_code_typed @roc residual_kernel_roc!(F_, v_m, v_a,
+                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                  pinj, qinj, pv, pq, nbus))
+        close(io)
+        F_ = copy(F)
+        io = open("code_llvm.txt", "w")
+        print(io, @device_code_llvm io=io @roc residual_kernel_roc!(F_, v_m, v_a,
+                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                  pinj, qinj, pv, pq, nbus))
+        close(io)
+        wait(@roc residual_kernel_roc!(F, v_m, v_a,
+                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                  pinj, qinj, pv, pq, nbus))
     end
 
 
@@ -242,7 +263,7 @@ module PFkernel
     F_ = copy(F)
     io = open("code_lowered.txt", "w")
         @sync begin
-            print(io, @show @device_code_lowered @cuda residual_kernel_cuda!(F_, v_m, v_a,
+            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F_, v_m, v_a,
                         ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                         ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                         pinj, qinj, pv, pq, nbus))
@@ -251,24 +272,15 @@ module PFkernel
     F_ = copy(F)
     io = open("code_typed.txt", "w")
         @sync begin
-            print(io, @show @device_code_typed @cuda residual_kernel_cuda!(F_, v_m, v_a,
+            print(io, @device_code_typed @cuda residual_kernel_cuda!(F_, v_m, v_a,
                         ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                         ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                         pinj, qinj, pv, pq, nbus))
         end
     close(io)
-    F_ = copy(F)
     io = open("code_llvm.txt", "w")
         @sync begin
-            print(io, @show @device_code_llvm io=io @cuda residual_kernel_cuda!(F_, v_m, v_a,
-                        ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                        ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                        pinj, qinj, pv, pq, nbus))
-        end
-    close(io)
-    io = open("code_ptx.txt", "w")
-        @sync begin
-            print(io, @show @device_code_ptx io=io @cuda residual_kernel_cuda!(F, v_m, v_a,
+            print(io, @device_code_llvm io=io @cuda residual_kernel_cuda!(F, v_m, v_a,
                         ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                         ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                         pinj, qinj, pv, pq, nbus))
