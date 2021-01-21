@@ -143,35 +143,20 @@ module PFkernel
         end
         return nothing
     end
-    function residual_kernel!(F, v_m, v_a,
-                                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                                  pinj, qinj, pv, pq, nbus, ::AMDGPUBackend)
+    function residual_kernel!(::AMDGPUBackend, F, args...)
         F_ = copy(F)
         io = open("code_lowered.txt", "w")
-        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, v_m, v_a,
-                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                  pinj, qinj, pv, pq, nbus))
+        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, args...))
         close(io)
         F_ = copy(F)
         io = open("code_typed.txt", "w")
-        print(io, @device_code_typed @roc residual_kernel_roc!(F_, v_m, v_a,
-                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                  pinj, qinj, pv, pq, nbus))
+        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, args...))
         close(io)
         F_ = copy(F)
         io = open("code_llvm.txt", "w")
-        print(io, @device_code_llvm io=io @roc residual_kernel_roc!(F_, v_m, v_a,
-                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                  pinj, qinj, pv, pq, nbus))
+        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, args...))
         close(io)
-        wait(@roc residual_kernel_roc!(F, v_m, v_a,
-                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                  pinj, qinj, pv, pq, nbus))
+        wait(@roc residual_kernel_roc!(F, args...))
     end
 
 
@@ -256,34 +241,22 @@ module PFkernel
         end
         return nothing
     end
-    function residual_kernel!(F, v_m, v_a,
-                                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                                  pinj, qinj, pv, pq, nbus, ::CUDABackend)
+    function residual_kernel!(::CUDABackend, F, args...)
     F_ = copy(F)
     io = open("code_lowered.txt", "w")
         @sync begin
-            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F_, v_m, v_a,
-                        ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                        ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                        pinj, qinj, pv, pq, nbus))
+            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F_, args...))
         end
     close(io)
     F_ = copy(F)
     io = open("code_typed.txt", "w")
         @sync begin
-            print(io, @device_code_typed @cuda residual_kernel_cuda!(F_, v_m, v_a,
-                        ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                        ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                        pinj, qinj, pv, pq, nbus))
+            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F_, args...))
         end
     close(io)
     io = open("code_llvm.txt", "w")
         @sync begin
-            print(io, @device_code_llvm io=io @cuda residual_kernel_cuda!(F, v_m, v_a,
-                        ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                        ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                        pinj, qinj, pv, pq, nbus))
+            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F, args...))
         end
     close(io)
     end
@@ -343,10 +316,39 @@ module PFkernel
         dpv = T(pv)
         dpq = T(pq)
 
-        residual_kernel!(dF, dv_m, dv_a,
+        residual_kernel!(backend, dF, dv_m, dv_a,
                         dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
                         dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
-                        dpinj, dqinj, dpv, dpq, nbus, backend)
+                        dpinj, dqinj, dpv, dpq, nbus)
         F .= ForwardDiff.value.(dF)
+    end
+    function loaddata(case)
+        datafile = joinpath(dirname(@__FILE__), "..", "data", case)
+        data_raw = ParsePSSE.parse_raw(datafile)
+        data, bus_to_indexes = ParsePSSE.raw_to_exapf(data_raw)
+
+        BUS_I, BUS_TYPE, PD, QD, GS, BS, BUS_AREA, VM, VA, BASE_KV, ZONE, VMAX, VMIN,
+        LAM_P, LAM_Q, MU_VMAX, MU_VMIN = IndexSet.idx_bus()
+        bus = data["bus"]
+        gen = data["gen"]
+        SBASE = data["baseMVA"][1]
+        nbus = size(bus, 1)
+        Ybus = PS.makeYbus(data, bus_to_indexes)
+        V = Array{Complex{Float64}}(undef, nbus)
+        for i in 1:nbus
+            V[i] = bus[i, VM]*exp(1im * pi/180 * bus[i, VA])
+        end
+
+        Vm = abs.(V)
+        Va = angle.(V)
+        bus = data["bus"]
+        gen = data["gen"]
+        nbus = size(bus, 1)
+        ngen = size(gen, 1)
+
+        SBASE = data["baseMVA"][1]
+        Sbus, Sload = PS.assembleSbus(gen, bus, SBASE, bus_to_indexes)
+        ref, pv, pq = PS.bustypeindex(bus, gen, bus_to_indexes)
+        return V, Ybus, Sbus, Sload, ref, pv, pq
     end
 end
