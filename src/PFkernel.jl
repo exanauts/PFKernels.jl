@@ -74,7 +74,54 @@ module PFkernel
         return F
     end
 
-    function residual_kernel!(F, v_m, v_a,
+    function kernel!(::AMDGPUBackend, F, args...)
+        F_ = copy(F)
+        io = open("code_lowered.txt", "w")
+        print(io, @device_code_lowered @roc kernel_roc!(F_, args...))
+        close(io)
+        F_ = copy(F)
+        io = open("code_typed.txt", "w")
+        print(io, @device_code_lowered @roc kernel_roc!(F_, args...))
+        close(io)
+        F_ = copy(F)
+        io = open("code_llvm.txt", "w")
+        print(io, @device_code_lowered @roc kernel_roc!(F_, args...))
+        close(io)
+        wait(@roc kernel_roc!(F, args...))
+    end
+
+    function kernel!(::CUDABackend, F, args...)
+    F_ = copy(F)
+    io = open("code_lowered.txt", "w")
+        @sync begin
+            print(io, @device_code_lowered @cuda kernel_cuda!(F_, args...))
+        end
+    close(io)
+    F_ = copy(F)
+    io = open("code_typed.txt", "w")
+        @sync begin
+            print(io, @device_code_lowered @cuda kernel_cuda!(F_, args...))
+        end
+    close(io)
+    io = open("code_llvm.txt", "w")
+        @sync begin
+            print(io, @device_code_lowered @cuda kernel_cuda!(F, args...))
+        end
+    close(io)
+    end
+
+    function kernel!(F, v_m, v_a,
+                                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                                  pinj, qinj, pv, pq, nbus, ::oneAPIBackend)
+        n = length(pv) + length(pq)
+        @oneapi items=n kernel_oneapi!(F, v_m, v_a,
+                    ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
+                    ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
+                    pinj, qinj, pv, pq, nbus)
+    end
+
+    function kernel!(F, v_m, v_a,
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                                   ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                                   pinj, qinj, pv, pq, nbus, ::CPUBackend)
@@ -108,7 +155,7 @@ module PFkernel
         end
     end
 
-    function residual_kernel_roc!(F, v_m, v_a,
+    function kernel_roc!(F, v_m, v_a,
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                                   ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                                   pinj, qinj, pv, pq, nbus)
@@ -143,24 +190,8 @@ module PFkernel
         end
         return nothing
     end
-    function residual_kernel!(::AMDGPUBackend, F, args...)
-        F_ = copy(F)
-        io = open("code_lowered.txt", "w")
-        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, args...))
-        close(io)
-        F_ = copy(F)
-        io = open("code_typed.txt", "w")
-        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, args...))
-        close(io)
-        F_ = copy(F)
-        io = open("code_llvm.txt", "w")
-        print(io, @device_code_lowered @roc residual_kernel_roc!(F_, args...))
-        close(io)
-        wait(@roc residual_kernel_roc!(F, args...))
-    end
 
-
-    function residual_kernel_oneapi!(F, v_m, v_a,
+    function kernel_oneapi!(F, v_m, v_a,
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                                   ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                                   pinj, qinj, pv, pq, nbus)
@@ -195,18 +226,8 @@ module PFkernel
         end
         return nothing
     end
-    function residual_kernel!(F, v_m, v_a,
-                                  ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                                  ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                                  pinj, qinj, pv, pq, nbus, ::oneAPIBackend)
-        n = length(pv) + length(pq)
-        @oneapi items=n residual_kernel_oneapi!(F, v_m, v_a,
-                    ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
-                    ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
-                    pinj, qinj, pv, pq, nbus)
-    end
 
-    function residual_kernel_cuda!(F, v_m, v_a,
+    function kernel_cuda!(F, v_m, v_a,
                                   ybus_re_nzval, ybus_re_colptr, ybus_re_rowval,
                                   ybus_im_nzval, ybus_im_colptr, ybus_im_rowval,
                                   pinj, qinj, pv, pq, nbus)
@@ -240,25 +261,6 @@ module PFkernel
             end
         end
         return nothing
-    end
-    function residual_kernel!(::CUDABackend, F, args...)
-    F_ = copy(F)
-    io = open("code_lowered.txt", "w")
-        @sync begin
-            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F_, args...))
-        end
-    close(io)
-    F_ = copy(F)
-    io = open("code_typed.txt", "w")
-        @sync begin
-            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F_, args...))
-        end
-    close(io)
-    io = open("code_llvm.txt", "w")
-        @sync begin
-            print(io, @device_code_lowered @cuda residual_kernel_cuda!(F, args...))
-        end
-    close(io)
     end
 
     function residual!(F, v_m, v_a,
@@ -316,12 +318,49 @@ module PFkernel
         dpv = T(pv)
         dpq = T(pq)
 
-        residual_kernel!(backend, dF, dv_m, dv_a,
+        kernel!(backend, dF, dv_m, dv_a,
                         dybus_re_nzval, dybus_re_colptr, dybus_re_rowval,
                         dybus_im_nzval, dybus_im_colptr, dybus_im_rowval,
                         dpinj, dqinj, dpv, dpq, nbus)
         F .= ForwardDiff.value.(dF)
     end
+
+    function kernel_cuda!(F, x) 
+        n = length(x)
+        index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+        stride = blockDim().x * gridDim().x
+        for i in index:stride:n
+            F[i] = x[i] 
+        end
+    end
+    
+    function identity(x)
+        t1s{N} = ForwardDiff.Dual{Nothing,Float64, N} where N
+        FT = t1s{2}
+        V = Vector
+        if backend == AMDGPUBackend() 
+            T = ROCVector
+        elseif backend == CUDABackend()
+            T = CuVector
+        elseif backend == oneAPIBackend() 
+            T = oneArray
+        else
+            error("Unsupported backend")
+        end
+        F = copy(x)
+        adF = V{FT}(undef, length(F))
+        adx = V{FT}(undef, length(x))
+        ForwardDiff.seed!(adx, x, one(ForwardDiff.Partials{2,Float64}))
+        dF = T(adF)
+        dx = T(adx)
+        kernel!(backend, dF, dx) 
+        function pvalues(x)
+            return x.values
+        end
+        return Array(ForwardDiff.values.(dF)), Array(pvalues.(ForwardDiff.partials.(dF)))
+    end
+
+
     function loaddata(case)
         datafile = joinpath(dirname(@__FILE__), "..", "data", case)
         data_raw = ParsePSSE.parse_raw(datafile)
