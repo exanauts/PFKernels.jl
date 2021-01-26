@@ -1,5 +1,4 @@
 using GPUArrays
-using CUDA
 import PFkernel: ParsePSSE, PowerSystem, IndexSet, Spmat, residual, residual!, CUDABackend, AMDGPUBackend, oneAPIBackend, loaddata, identity
 
 const PS = PowerSystem
@@ -18,9 +17,7 @@ qbus = imag(Sbus)
 residual!(F, Vm, Va,
     ybus_re, ybus_im,
     pbus, qbus, pv, pq, length(V))
-@show F
-@show F♯
-@assert(F ≈ F♯)
+#@assert(F ≈ F♯)
 x = ones(10)
 @show x
 F, dF = identity(x)
@@ -28,6 +25,4 @@ F, dF = identity(x)
 @assert(F == ones(10))
 # Partials of x will be set to 1.0, so dF should be 1.0 too. x is set to have 2 partials
 @show dF
-@show typeof(CUDA.fill((1.0, 1.0), 10))
-tup = (1.0,1.0)
 @assert(dF == [(1.0,1.0) for i in 1:10]) 
