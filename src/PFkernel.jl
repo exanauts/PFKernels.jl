@@ -173,7 +173,7 @@ module PFkernel
             if i > npv
                 F[i + npq] -= qinj[fr]
             end
-            @inbounds for c in ybus_re_colptr[fr]:ybus_re_colptr[fr+1]-1
+            for c in ybus_re_colptr[fr]:ybus_re_colptr[fr+1]-1
                 to = ybus_re_rowval[c]
                 aij = v_a[fr] - v_a[to]
                 # f_re = a * cos + b * sin
