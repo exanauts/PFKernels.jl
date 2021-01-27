@@ -18,7 +18,10 @@ function mynorm(x)
     dF = AT(adF)
     dx = AT(adx)
     PFKernels.kernel!(PFKernels.backend, dF, dx) 
-    nrm2 = sum(dF)
+    nrm2 = t1s{n}(0.0)
+    for v in dF
+      nrm2 += v
+    end
     @show typeof(nrm2)
     @show nrm2
     return ForwardDiff.value(nrm2), ForwardDiff.partials(nrm2)
