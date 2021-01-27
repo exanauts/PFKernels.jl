@@ -2,7 +2,7 @@ module PowerSystem
 
 using Printf
 using SparseArrays
-using ..PFkernel: ParsePSSE, ParseMAT, IndexSet, Spmat
+using ..PFKernels: ParsePSSE, ParseMAT, IndexSet, Spmat
 
 import Base: show
 

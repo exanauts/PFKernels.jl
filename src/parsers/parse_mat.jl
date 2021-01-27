@@ -9,7 +9,7 @@
 
 module ParseMAT
 
-using ..PFkernel: IndexSet
+using ..PFKernels: IndexSet
 
 include("matlab.jl")
 include("im_common.jl")
