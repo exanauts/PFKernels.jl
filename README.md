@@ -11,6 +11,35 @@ Due to dependency conflicts each target architecture has a `Project.toml` in the
 ```bash
 julia --project examples/identity/identity.jl
 ```
-Each example is composed of a driver file and the kernels in `kernels.jl`.
 
-By default, the code tries to load one of the GPU packages `AMDGPU.jl`, `oneAPI.jl` or `CUDA.jl`.
+# Examples
+
+Core functions required in [ExaPF.jl](https://github.com/exanauts/ExaPF.jl)
+
+## Identity
+
+Basic kernel implementing the identity
+
+```julia
+y .= x
+```
+
+The driver computes the identity and its derivative using ForwardDiff.jl
+
+## Norm
+
+Kernel implementing squared norm followed through the point-wise square followed by a summation using `GPUArrays.jl`.
+
+```julia
+y .= sum(x.^2)
+```
+
+The driver computes the identity and its derivative using ForwardDiff.jl.
+
+## BiCGSTAB
+
+This calls the bicgstab (krylov.jl) of [Kyrlov.jl](https://github.com/JuliaSmoothOptimizers/Krylov.jl) or executes a custom BiCGSTAB implementation (handwritten.jl).
+
+## PFKernel
+
+`PFKernel.jl` implements the balance equations of a power flow kernel.
